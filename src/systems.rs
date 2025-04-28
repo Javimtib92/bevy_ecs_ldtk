@@ -146,7 +146,7 @@ pub fn apply_level_set(
             let previous_level_maps = children
                 .into_iter()
                 .flat_map(|iterator| iterator.iter())
-                .filter_map(|child_entity| ldtk_level_query.get(*child_entity).ok())
+                .filter_map(|child_entity| ldtk_level_query.get(child_entity).ok())
                 .map(|(level_iid, entity)| (level_iid.clone(), entity))
                 .collect::<HashMap<_, _>>();
 
@@ -224,7 +224,7 @@ pub fn process_ldtk_levels(
         (
             Entity,
             &LevelIid,
-            &Parent,
+            &ChildOf,
             Option<&Respawn>,
             Option<&Children>,
         ),
@@ -234,7 +234,7 @@ pub fn process_ldtk_levels(
     mut level_events: EventWriter<LevelEvent>,
     ldtk_settings: Res<LdtkSettings>,
 ) {
-    for (ldtk_entity, level_iid, parent, respawn, children) in level_query.iter() {
+    for (ldtk_entity, level_iid, child_of, respawn, children) in level_query.iter() {
         // Checking if the level has any children is an okay method of checking whether it has
         // already been processed.
         // Users will most likely not be adding children to the level entity betwen its creation
@@ -247,7 +247,7 @@ pub fn process_ldtk_levels(
         let already_processed = matches!(children, Some(children) if !children.is_empty());
 
         if !already_processed {
-            if let Ok(ldtk_handle) = ldtk_query.get(parent.get()) {
+            if let Ok(ldtk_handle) = ldtk_query.get(child_of.parent()) {
                 if let Some(ldtk_project) = ldtk_project_assets.get(ldtk_handle) {
                     // Commence the spawning
                     let tileset_definition_map: HashMap<i32, &TilesetDefinition> = ldtk_project
@@ -356,11 +356,11 @@ pub fn clean_respawn_entities(world: &mut World) {
         for world_children in ldtk_worlds_to_clean.iter() {
             for child in world_children
                 .iter()
-                .filter(|l| other_ldtk_levels.contains(**l) || worldly_entities.contains(**l))
+                .filter(|l| other_ldtk_levels.contains(*l) || worldly_entities.contains(*l))
             {
-                entities_to_despawn_recursively.push(*child);
+                entities_to_despawn_recursively.push(child);
 
-                if let Ok(level_iid) = other_ldtk_levels.get(*child) {
+                if let Ok(level_iid) = other_ldtk_levels.get(child) {
                     level_events.send(LevelEvent::Despawned(level_iid.clone()));
                 }
             }
@@ -374,18 +374,18 @@ pub fn clean_respawn_entities(world: &mut World) {
     }
 
     for entity in entities_to_despawn_recursively {
-        world.entity_mut(entity).despawn_recursive();
+        world.entity_mut(entity).despawn();
     }
 
     for entity in entities_to_despawn_descendants {
-        world.entity_mut(entity).despawn_descendants();
+        world.entity_mut(entity).despawn_related::<Children>();
     }
 }
 
 /// Implements the functionality for `Worldly` components.
 pub fn worldly_adoption(
     mut commands: Commands,
-    ancestors: Query<&Parent>,
+    ancestors: Query<&ChildOf>,
     worldly_query: Query<Entity, Added<Worldly>>,
 ) {
     for worldly_entity in worldly_query.iter() {
